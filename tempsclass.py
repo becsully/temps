@@ -2,6 +2,7 @@ import csv
 import copy
 import numpy
 import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 import datetime
 
 
@@ -33,7 +34,7 @@ class Employee(object):
         self.idnum = row['ID']
         self.gender = row['Gender']
         self.ethnicity = row['Ethnicity']
-        self.contracts = {1: Contract(row)}
+        self.contracts = {0: Contract(row)}
 
     def add_contract(self, row):
         numlist = []
@@ -77,11 +78,9 @@ class Contract(object):
         self.rate = float(row['Rate'].replace("$","").replace(" ","")) #float
         self.employee_id = row['ID']
 
-
     def __repr__(self):
         return("Dates: {0.start_date_str} to {0.end_date_str} ({0.days_worked} days)\n"
                "Department: {0.department}\nJob Title: {0.title}\nPay Rate: ${0.rate}".format(self))
-
 
     def get_weeks(self): 
         days = []
@@ -108,7 +107,7 @@ def get_dept(temps, dept_name):
     return contracts # returns list of Contract objects
 
 
-def refine_title(contracts, titles):
+def refine_title(contracts, titles): #list of Contracts, list of titles by string
     matches = []
     for contract in contracts: 
         if contract.title in titles:
@@ -118,54 +117,96 @@ def refine_title(contracts, titles):
     return matches
 
 
-def get_x_y(contracts):
+def earliest_latest(dw_dicts): #takes a list of date-worker dicts 
 
-    dates_workers_dict = {} #keys are dates, values are int of contracts that match that date
-
-    # populate the dictionary with pairs of dates + how many workers on each date
-    for contract in contracts: 
-        for date in contract.get_weeks(): 
-            if date in dates_workers_dict:
-                dates_workers_dict[date] += 1
-            else: 
-                dates_workers_dict[date] = 1
-
-    # now see if there are any dates with 0 temps
-    # find the earliest and latest date in the date dictionary
+    # find the earliest and latest date in the date dictionaries
     temp_earliest = datetime.date.max
     temp_latest = datetime.date.min
-    for date in dates_workers_dict: 
-        if date < temp_earliest:
-            temp_earliest = date
-        elif date > temp_latest:
-            temp_latest = date
-        else:
-            pass
+
+    for d in dw_dicts:
+        for date in d: 
+            if date < temp_earliest:
+                temp_earliest = date
+            elif date > temp_latest:
+                temp_latest = date
+            else:
+                pass
 
     date_list = []
     while temp_earliest <= temp_latest:
         date_list.append(temp_earliest)
         temp_earliest = temp_earliest + datetime.timedelta(days=7)
 
-    for date in date_list: 
-        if date in dates_workers_dict:
-            pass    
-        else:
-            dates_workers_dict[date] = 0
-
-    return dates_workers_dict
+    return date_list
 
 
-def position_graph(dw_dicts): #takes list of dicts by position
-    print("yay")
- 
+def make_dw_dict(contracts): #takes list of Contract objects and creates dictionary of dates: # workers
+
+    dw_dict = {} #keys are dates, values are int# of workers whose contracts that match that date
+
+    # populate the dictionary with pairs of dates + how many workers on each date
+    for contract in contracts: 
+        for date in contract.get_weeks(): 
+            if date in dw_dict:
+                dw_dict[date] += 1
+            else: 
+                dw_dict[date] = 1
+
+    return dw_dict
+
+
+def fill_zeros(dw_dicts):
+    # now see if there are any dates with 0 temps
+    date_list = earliest_latest(dw_dicts)
+    for d in dw_dicts:
+        for date in date_list: 
+            if date in d:
+                pass    
+            else:
+                d[date] = 0
+    return dw_dicts
+
+
+def position_graph(dept_name, titles, dw_dicts): #takes a list of date-worker dicts and a corresponding list of titles
+    
+    colors = ['#1B5A7A','#1AA59A','#A6ED8E','#F3FFB9']
+
+    ax = plt.subplot(111)
+    ax.axvline(datetime.date(2017,3,1), linewidth=0.5, color='lightgrey', zorder=0) # vertical lines
+    ax.axvline(datetime.date(2018,3,1), linewidth=0.5, color='lightgrey', zorder=0) # vertical lines
+
+    dw_dicts = fill_zeros(dw_dicts)
+
+    running_total = {} # a shadow dw_dict with a running total of workers added so far
+    for date in dw_dicts[0]:
+        running_total[date] = 0
+
+    i = 0
+    for d in dw_dicts:
+        p = plt.bar([date for date in d], [d[date] for date in d], 
+                    width=5, zorder=1, bottom=[running_total[date] for date in d], color=colors[i],
+                    label=titles[i])
+        i+=1
+        for date in d:
+            running_total[date] += d[date]
+
+    ax.xaxis_date()
+    date_format = mdates.DateFormatter("%b '%y")
+    ax.xaxis.set_major_formatter(date_format)
+    ax.set_axisbelow(False)
+    ax.yaxis.grid(color='white', linewidth=3, zorder=2)
+    ax.xaxis.grid(False)
+    ax.set_facecolor('white')
+    plt.title(dept_name)
+    plt.legend(loc='best').draggable()
+    plt.show()
 
 
 
 def simple_graph(dw_dict): #takes a single dict {date: # workers}
 
-    plt.style.use('fivethirtyeight')
     ax = plt.subplot(111)
+    plt.style.use('fivethirtyeight')
     ax.axvline(datetime.date(2017,3,1), linewidth=0.5, color='lightgrey', zorder=0) # vertical lines
     ax.axvline(datetime.date(2018,3,1), linewidth=0.5, color='lightgrey', zorder=0) # vertical lines
     ax.bar([key for key in dw_dict], [dw_dict[key] for key in dw_dict], width=5, zorder=1)
@@ -179,9 +220,13 @@ def simple_graph(dw_dict): #takes a single dict {date: # workers}
 
 def test():
     temps = TempDict().temps
-    matches = get_dept(temps, "All Things Considered")
-    matches = refine_title(matches, ["News Assistant", "Production Assistant"])
-    simple_graph(get_x_y(matches))
+    dept_name = 'Operations Desk'
+    matches = get_dept(temps, dept_name)
+    titles = ['News Assistant', 'Production Assistant', 'Assistant Producer', 'Associate Producer']
+    t_matches = []
+    for t in titles:
+        t_matches.append(make_dw_dict(refine_title(matches, t)))
+    position_graph(dept_name, titles, t_matches)
 
 
 if __name__ == '__main__':
