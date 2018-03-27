@@ -1,6 +1,8 @@
-import datetime
 import csv
 import copy
+import numpy
+import matplotlib.pyplot as plt
+import datetime
 
 
 class TempDict(object):
@@ -65,8 +67,10 @@ class Contract(object):
     """A temporary work contract. Contains start/end dates, department, job title, and pay rate."""
 
     def __init__(self, row):
-        self.start_date = row['EffectiveDate'] #string in format MM/DD/YYYY
-        self.end_date = row['EndDate'] #string in format MM/DD/YYYY
+        self.start_date = datetime.datetime.strptime(row['EffectiveDate'], "%m/%d/%Y").date()
+        self.start_date_str = row['EffectiveDate']
+        self.end_date = datetime.datetime.strptime(row['EndDate'], "%m/%d/%Y").date()
+        self.end_date_str = row['EndDate']
         self.department = row['Department'] #string
         self.days_worked = int(row['# days']) #int
         self.title = row['JobTtitle'] #string. note the typo in the original CSV
@@ -75,112 +79,21 @@ class Contract(object):
 
 
     def __repr__(self):
-        return("Dates: {0.start_date} to {0.end_date} ({0.days_worked} days)\nDepartment: {0.department}\n"
-               "Job Title: {0.title}\nPay Rate: ${0.rate}".format(self))
-
-    # function to tabulate workweeks within the contract
-
-""""
-def temp_test(temp,args):
-
-    new_temp = copy.deepcopy(temp)
-
-    if args['JobTitle'] is not None: 
-        number_deleted = 0
-        for i in range(len(temp['Contracts'])): #for item in list
-            contract = temp['Contracts'][i]
-            if contract['JobTitle'] == args['JobTitle']:
-                pass
-            else:
-                new_temp['Contracts'].pop(i-number_deleted)
-                number_deleted += 1
-        if new_temp['Contracts'] == []:
-            return False, None
-
-    if args['Ethnicity'] and temp['Ethnicity'] not in args['Ethnicity']:
-        return False, None
-
-    if args['Gender'] and temp['Gender'] != args['Gender']:
-        return False, None
-
-    return True, new_temp
+        return("Dates: {0.start_date_str} to {0.end_date_str} ({0.days_worked} days)\n"
+               "Department: {0.department}\nJob Title: {0.title}\nPay Rate: ${0.rate}".format(self))
 
 
-def contract_test(contract,args):
-    if contract["JobTitle"] in args["Job Title"]:
-        return True
-    else: 
-        return False
+    def get_weeks(self): 
+        days = []
+        if self.days_worked >= 4:
+            for x in range(self.days_worked - 1):
+                date = self.start_date + datetime.timedelta(days=x)
+                if date.weekday() == 3: #if the day is a thursday
+                    days.append(date)
+                else:
+                    pass
+        return days
 
-
-def average_pay(raw_temps,gend=None,ethn=None,jobtitle=None):
-
-    days_total = 0
-    weighted_pay_total = 0
-
-    if ethn == "POC":
-        ethn = "BLA"
-
-    args = {
-        'Ethnicity': ethn,
-        'Gender': gend,
-        'JobTitle': jobtitle
-            }
-
-    temps_to_eval = {}
-
-    for temp in raw_temps: #for key in dictionary
-        temp_bool, new_temp = temp_test(raw_temps[temp],args)
-        if temp_bool:
-            temps_to_eval[temp] = new_temp
-
-    for temp in temps_to_eval:
-        for contract in temps_to_eval[temp]["Contracts"]: #for item in list
-            weighted_pay_total += float(contract['Rate'])*int(contract['# days'])
-            days_total += int(contract['# days'])
-
-    try:
-        result = weighted_pay_total/days_total
-    except ZeroDivisionError:
-        result = "there were no results for this combination!"
-
-    return result
-
-
-def pay_calc():
-    temps = create_dict()
-
-    keep_going = True
-
-    while keep_going:
-        print("find average pay based on: ")
-        print("1. gender")
-        print("2. race/ethnicity")
-        print("3. job title")
-
-        gender = None
-        ethn = None
-        jobtitle = None
-
-        choices = input("type 1, 2, 3, or any combo thereof ->")
-        if "1" in choices:
-            gender = input("which gender? M or F ->")
-        if "2" in choices:
-            ethn = input("which race? W(hite), B(lack), A(sian/Middle Eastern), L(atino/a), or POC(all POCs) ->")
-        if "3" in choices:
-            jobtitle = input("which position? Production Assistant, Producer 1, Reporter US, etc: ->")
-
-        result = average_pay(temps,gender,ethn,jobtitle)
-
-        if isinstance(result, str):
-            print(result)
-        else: 
-            print('${0:.2f}'.format(result))
-
-        kg_input = input("Run another search? Y/N ->")
-        if kg_input != 'Y' and kg_input != 'y':
-            keep_going = False
-"""
 
 
 def get_dept(temps, dept_name):
@@ -191,15 +104,84 @@ def get_dept(temps, dept_name):
         match_bool, matches = temp.has_department(dept_name)
         if match_bool:
             for match in matches:
-                print(match)
                 contracts.append(match)
     return contracts # returns list of Contract objects
+
+
+def refine_title(contracts, titles):
+    matches = []
+    for contract in contracts: 
+        if contract.title in titles:
+            matches.append(contract)
+        else:
+            pass
+    return matches
+
+
+def get_x_y(contracts):
+
+    dates_workers_dict = {} #keys are dates, values are int of contracts that match that date
+
+    # populate the dictionary with pairs of dates + how many workers on each date
+    for contract in contracts: 
+        for date in contract.get_weeks(): 
+            if date in dates_workers_dict:
+                dates_workers_dict[date] += 1
+            else: 
+                dates_workers_dict[date] = 1
+
+    # now see if there are any dates with 0 temps
+    # find the earliest and latest date in the date dictionary
+    temp_earliest = datetime.date.max
+    temp_latest = datetime.date.min
+    for date in dates_workers_dict: 
+        if date < temp_earliest:
+            temp_earliest = date
+        elif date > temp_latest:
+            temp_latest = date
+        else:
+            pass
+
+    date_list = []
+    while temp_earliest <= temp_latest:
+        date_list.append(temp_earliest)
+        temp_earliest = temp_earliest + datetime.timedelta(days=7)
+
+    for date in date_list: 
+        if date in dates_workers_dict:
+            pass    
+        else:
+            dates_workers_dict[date] = 0
+
+    return dates_workers_dict
+
+
+def position_graph(dw_dicts): #takes list of dicts by position
+    print("yay")
+ 
+
+
+
+def simple_graph(dw_dict): #takes a single dict {date: # workers}
+
+    plt.style.use('fivethirtyeight')
+    ax = plt.subplot(111)
+    ax.axvline(datetime.date(2017,3,1), linewidth=0.5, color='lightgrey', zorder=0) # vertical lines
+    ax.axvline(datetime.date(2018,3,1), linewidth=0.5, color='lightgrey', zorder=0) # vertical lines
+    ax.bar([key for key in dw_dict], [dw_dict[key] for key in dw_dict], width=5, zorder=1)
+    ax.xaxis_date()
+    ax.set_axisbelow(False)
+    ax.yaxis.grid(color='white', linewidth=3, zorder=2)
+    ax.xaxis.grid(False)
+    ax.set_facecolor('white')
+    plt.show()
 
 
 def test():
     temps = TempDict().temps
     matches = get_dept(temps, "All Things Considered")
-    print(contract for contract in matches)
+    matches = refine_title(matches, ["News Assistant", "Production Assistant"])
+    simple_graph(get_x_y(matches))
 
 
 if __name__ == '__main__':
