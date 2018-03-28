@@ -3,11 +3,13 @@ import copy
 import numpy
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
+import matplotlib.ticker as mticker
 import datetime
+from pprint import pprint
 
 
 class TempDict(object):
-
+    # a class to help easily make/manage the giant list of employees and their temp contracts. 
     def __init__(self):
         self.temps = {}
         with open('temps.csv') as tempfile:
@@ -26,9 +28,8 @@ class TempDict(object):
 
 
 class Employee(object):
-    """An employee who has had at least one temporary contract. Attributes include some anonymized info 
-    about the person (ID number, basic demographic info) and a [list? dictionary?] of their contracts. 
-    """
+    # An employee who has had at least one temporary contract. Attributes include some anonymized info 
+    # about the person (ID number, basic demographic info) and a dictionary {int: Contract} of their contracts. 
 
     def __init__(self, row): #accepts a row, in dictionary form, from the temps.csv file
         self.idnum = row['ID']
@@ -65,7 +66,7 @@ class Employee(object):
 
 
 class Contract(object):
-    """A temporary work contract. Contains start/end dates, department, job title, and pay rate."""
+    # A temporary work contract. Contains start/end dates, department, job title, and pay rate.
 
     def __init__(self, row):
         self.start_date = datetime.datetime.strptime(row['EffectiveDate'], "%m/%d/%Y").date()
@@ -94,8 +95,8 @@ class Contract(object):
         return days
 
 
-
 def get_dept(temps, dept_name):
+    # takes Temps.temps, a dictionary of {ID number: Employee object}
     match_bool = False
     contracts = []
     for temp_id in temps:
@@ -117,14 +118,31 @@ def refine_title(contracts, titles): #list of Contracts, list of titles by strin
     return matches
 
 
-def earliest_latest(dw_dicts): #takes a list of date-worker dicts 
+def make_dw_dict(contracts): #takes list of Contract objects and creates dictionary of dates: # workers
+    dw_dict = {} #keys are dates, values are int# of workers whose contracts that match that date
 
+    # populate the dictionary with pairs of dates + how many workers on each date
+    for contract in contracts: 
+        for date in contract.get_weeks(): 
+            if date in dw_dict:
+                dw_dict[date] += 1
+            else: 
+                dw_dict[date] = 1
+
+    if bool(dw_dict) is False:
+        return None
+    else:
+        return dw_dict
+
+
+def earliest_latest(dw_dicts): #takes a dict {position: date-worker dict}
     # find the earliest and latest date in the date dictionaries
     temp_earliest = datetime.date.max
     temp_latest = datetime.date.min
 
     for d in dw_dicts:
-        for date in d: 
+        position = dw_dicts[d]
+        for date in position: 
             if date < temp_earliest:
                 temp_earliest = date
             elif date > temp_latest:
@@ -140,60 +158,75 @@ def earliest_latest(dw_dicts): #takes a list of date-worker dicts
     return date_list
 
 
-def make_dw_dict(contracts): #takes list of Contract objects and creates dictionary of dates: # workers
-
-    dw_dict = {} #keys are dates, values are int# of workers whose contracts that match that date
-
-    # populate the dictionary with pairs of dates + how many workers on each date
-    for contract in contracts: 
-        for date in contract.get_weeks(): 
-            if date in dw_dict:
-                dw_dict[date] += 1
-            else: 
-                dw_dict[date] = 1
-
-    return dw_dict
-
-
-def fill_zeros(dw_dicts):
-    # now see if there are any dates with 0 temps
-    date_list = earliest_latest(dw_dicts)
-    for d in dw_dicts:
-        for date in date_list: 
-            if date in d:
-                pass    
-            else:
-                d[date] = 0
+def remove_empty(temp_dw_dicts): # takes a dict of {position: date-worker dict}
+    #dump dicts with no results
+    dw_dicts = {}
+    for position in temp_dw_dicts:
+        if bool(temp_dw_dicts[position]): #checks to see if the dictionaries have content
+            dw_dicts[position] = temp_dw_dicts[position]
+        else: #if they're empty, they get dumped
+            pass
     return dw_dicts
 
 
-def position_graph(dept_name, titles, dw_dicts): #takes a list of date-worker dicts and a corresponding list of titles
-    
-    colors = ['#1B5A7A','#1AA59A','#A6ED8E','#F3FFB9']
+def fill_zeros(dw_dicts): # takes a dict of {position: date-worker dict}
+    # add date: 0 to all dates with 0 temps
+    date_list = earliest_latest(dw_dicts)
+    for position in dw_dicts:
+        p = dw_dicts[position]
+        for date in date_list: 
+            if date in p:
+                pass    
+            else:
+                p[date] = 0
+    return dw_dicts
+
+
+def position_graph(dept_name, dw_dicts): # takes a dict of {position: date-worker dict}
+    #makes a nice looking graph of all temps in a dept over a period of time. 
+    colors = {
+        'News Assistant': '#1B5A7A',
+        'Production Assistant': '#1AA59A',
+        'Assistant Producer': '#A6ED8E',
+        'Associate Producer': '#F3FFB9',
+        'Assoc Producer/Director': '#F3FFB9',
+        'Editor I': '#57385C',
+        'Editor II': '#A75265',
+        'Editor III': '#F08E6B',
+        'Senior Editor': '#FFFA9D',
+        'Reporter US': '#C9D6DF',
+        'Reporter': '#C9D6DF',
+        'Librarian 1': '#36506C',
+        'Librarian 2': '#A5DEF1',
+        }
 
     ax = plt.subplot(111)
     ax.axvline(datetime.date(2017,3,1), linewidth=0.5, color='lightgrey', zorder=0) # vertical lines
     ax.axvline(datetime.date(2018,3,1), linewidth=0.5, color='lightgrey', zorder=0) # vertical lines
 
+    dw_dicts = remove_empty(dw_dicts)
     dw_dicts = fill_zeros(dw_dicts)
 
     running_total = {} # a shadow dw_dict with a running total of workers added so far
-    for date in dw_dicts[0]:
+    for date in dw_dicts[(list(dw_dicts)[0])]: # just a way of picking a single entry in the dict
         running_total[date] = 0
 
     i = 0
     for d in dw_dicts:
-        p = plt.bar([date for date in d], [d[date] for date in d], 
-                    width=5, zorder=1, bottom=[running_total[date] for date in d], color=colors[i],
-                    label=titles[i])
+        position = dw_dicts[d]
+        p = plt.bar([date for date in position], [position[date] for date in position], 
+                    width=5, zorder=1, bottom=[running_total[date] for date in position], 
+                    color=colors[d], label=d)
         i+=1
-        for date in d:
-            running_total[date] += d[date]
+        for date in position:
+            running_total[date] += position[date]
 
     ax.xaxis_date()
     date_format = mdates.DateFormatter("%b '%y")
     ax.xaxis.set_major_formatter(date_format)
     ax.set_axisbelow(False)
+    loc = mticker.MultipleLocator(1)
+    ax.yaxis.set_major_locator(loc)
     ax.yaxis.grid(color='white', linewidth=3, zorder=2)
     ax.xaxis.grid(False)
     ax.set_facecolor('white')
@@ -202,11 +235,8 @@ def position_graph(dept_name, titles, dw_dicts): #takes a list of date-worker di
     plt.show()
 
 
-
 def simple_graph(dw_dict): #takes a single dict {date: # workers}
-
     ax = plt.subplot(111)
-    plt.style.use('fivethirtyeight')
     ax.axvline(datetime.date(2017,3,1), linewidth=0.5, color='lightgrey', zorder=0) # vertical lines
     ax.axvline(datetime.date(2018,3,1), linewidth=0.5, color='lightgrey', zorder=0) # vertical lines
     ax.bar([key for key in dw_dict], [dw_dict[key] for key in dw_dict], width=5, zorder=1)
@@ -219,14 +249,23 @@ def simple_graph(dw_dict): #takes a single dict {date: # workers}
 
 
 def test():
+    editors = ['Editor I', 'Editor II', 'Editor III', 'Senior Editor']
+    producers = ['News Assistant', 'Production Assistant', 'Assistant Producer', 'Associate Producer']
+    library = ['Librarian 1', 'Librarian 2']
+    desk = ['Reporter US', 'Editor I', 'Editor II', 'Editor III', 'Senior Editor']
+    all_news = ['News Assistant', 'Production Assistant', 'Assistant Producer', 'Associate Producer',
+                'Reporter US', 'Reporter', 'Editor I', 'Editor II', 'Editor III', 'Senior Editor']
+    
+    #change these for graphs
+    dept_name = 'Morning Edition'
+    titles = editors
+
     temps = TempDict().temps
-    dept_name = 'Operations Desk'
     matches = get_dept(temps, dept_name)
-    titles = ['News Assistant', 'Production Assistant', 'Assistant Producer', 'Associate Producer']
-    t_matches = []
+    t_matches = {}
     for t in titles:
-        t_matches.append(make_dw_dict(refine_title(matches, t)))
-    position_graph(dept_name, titles, t_matches)
+        t_matches[t] = make_dw_dict(refine_title(matches, t))
+    position_graph(dept_name, t_matches)
 
 
 if __name__ == '__main__':
