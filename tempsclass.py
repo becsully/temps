@@ -108,10 +108,10 @@ def get_dept(temps, dept_name):
     return contracts # returns list of Contract objects
 
 
-def refine_title(contracts, titles): #list of Contracts, list of titles by string
+def refine_title(contracts, title): #list of Contracts, single title string
     matches = []
     for contract in contracts: 
-        if contract.title in titles:
+        if contract.title == title:
             matches.append(contract)
         else:
             pass
@@ -191,15 +191,15 @@ def position_graph(dept_name, dw_dicts): # takes a dict of {position: date-worke
         'Associate Producer': '#F3FFB9',
         'Assoc Producer/Director': '#F3FFB9',
         'Editor I': '#57385C',
-        'Editor II': '#A75265',
+        'Editor II': '#C61951', #A75265
         'Editor III': '#F08E6B',
-        'Senior Editor': '#FFFA9D',
+        'Senior Editor': '#FFC93C',
         'Reporter US': '#C9D6DF',
         'Reporter': '#C9D6DF',
         'Librarian 1': '#36506C',
         'Librarian 2': '#A5DEF1',
         }
-
+    
     ax = plt.subplot(111)
     ax.axvline(datetime.date(2017,3,1), linewidth=0.5, color='lightgrey', zorder=0) # vertical lines
     ax.axvline(datetime.date(2018,3,1), linewidth=0.5, color='lightgrey', zorder=0) # vertical lines
@@ -229,6 +229,10 @@ def position_graph(dept_name, dw_dicts): # takes a dict of {position: date-worke
     ax.yaxis.set_major_locator(loc)
     ax.yaxis.grid(color='white', linewidth=3, zorder=2)
     ax.xaxis.grid(False)
+    if ax.get_ylim()[1] < 5:
+        plt.ylim(ymax=5)
+    else:
+        plt.ylim(ymax=ax.get_ylim()[1]+1)
     ax.set_facecolor('white')
     plt.title(dept_name)
     plt.legend(loc='best').draggable()
@@ -249,23 +253,46 @@ def simple_graph(dw_dict): #takes a single dict {date: # workers}
 
 
 def test():
-    editors = ['Editor I', 'Editor II', 'Editor III', 'Senior Editor']
-    producers = ['News Assistant', 'Production Assistant', 'Assistant Producer', 'Associate Producer']
-    library = ['Librarian 1', 'Librarian 2']
-    desk = ['Reporter US', 'Editor I', 'Editor II', 'Editor III', 'Senior Editor']
-    all_news = ['News Assistant', 'Production Assistant', 'Assistant Producer', 'Associate Producer',
+    groups = {
+        1: ['Editor I', 'Editor II', 'Editor III', 'Senior Editor'],
+        2: ['News Assistant', 'Production Assistant', 'Assistant Producer', 'Associate Producer'],
+        3: ['Librarian 1', 'Librarian 2'],
+        4: ['Reporter US', 'Editor I', 'Editor II', 'Editor III', 'Senior Editor'],
+        5: ['News Assistant', 'Production Assistant', 'Assistant Producer', 'Associate Producer',
                 'Reporter US', 'Reporter', 'Editor I', 'Editor II', 'Editor III', 'Senior Editor']
-    
-    #change these for graphs
-    dept_name = 'Morning Edition'
-    titles = editors
+        }
+
+    poss_depts = set(['Morning Edition', 'All Things Considered', 'Weekend Edition', 'Weekend ATC',
+                      'Science Desk', 'Washington Desk', 'Operations Desk', 'Arts Information Unit',
+                      'Newscast Unit', 'Business Desk', 'Office of VP/Programming', 'Education',
+                      'TED Radio Hour', 'How I Built This', 'Invisibilia', 'Office of the VP News',
+                      'Facebook Live', 'DM Music Dept', 'NPR One', 'Planet Money', 'News Ops Desk',
+                      'Wait Wait Dont Tell Me', 'Race Ethnicity & Culture', 'News Apps', 'Newsdesk',
+                      'National Desk', 'DM Libraries', 'Diversity', 'Here & Now', 'Hidden Brain',
+                      'NPR Events & Generation L', 'Digital News Desk', 'International Desk'])
 
     temps = TempDict().temps
-    matches = get_dept(temps, dept_name)
-    t_matches = {}
-    for t in titles:
-        t_matches[t] = make_dw_dict(refine_title(matches, t))
-    position_graph(dept_name, t_matches)
+    keep_going = True
+    while keep_going:
+        no_dept = True
+        while no_dept: 
+            dept_name = input("Type a department (Morning Edition, Science Desk) >> ")
+            if dept_name in poss_depts:
+                no_dept = False
+            elif dept_name == "options":
+                pprint(poss_depts)
+            else:
+                print("that's not an available department. Try again! (Type 'options' to see the options.)")
+        print("And choose some positions: \n1. Editors\n2. Producers\n3. Librarians\n4. Desk\n5. All")
+        titles = groups[int(input("Choose a number >> "))]
+        d_matches = get_dept(temps, dept_name)
+        t_matches = {}
+        for t in titles:
+            t_matches[t] = make_dw_dict(refine_title(d_matches, t))
+        position_graph(dept_name, t_matches)
+        kg = input("Keep going? y/n >> ")
+        if kg == "N" or kg == "n":
+            keep_going = False
 
 
 if __name__ == '__main__':
